@@ -38,6 +38,11 @@ campaign or service action has proven benefits. For small groups, state the coun
 Be concise, generally under 180 words. Cite the relevant summary/table name in your
 answer and remind the user to check numbers against the dashboard. Do not claim
 answers have been automatically fact-checked. You have no browsing or code tools.
+When the user asks what to do, or the figures clearly point to a priority, suggest
+one to three concrete candidate actions (for example a product-recommendation test,
+a service-recovery review, or a small pilot), each tied to the specific figures that
+motivate it and to a metric to monitor (purchase amount, satisfaction, low-rating rate).
+Label them as candidate tests to measure, not proven results.
 """
 
 
@@ -143,8 +148,23 @@ def chart(fig):
     st.plotly_chart(fig, width='stretch')
 
 
+PRETTY = {'label': 'Segment', 'CustomerRegion': 'Region', 'ProductCategory': 'Product category',
+          'RetailChannel': 'Channel', 'purchase_records': 'Purchase records',
+          'recorded_purchase_amount_usd': 'Purchase amount (USD)',
+          'average_satisfaction': 'Avg satisfaction / 5', 'low_rating_records': 'Low ratings (1–2)',
+          'low_rating_rate_pct': 'Low-rating rate', 'revenue_share_pct': 'Share of selected amount',
+          'average_amount_per_record_usd': 'Avg amount per record (USD)'}
+FORMATS = {'Purchase amount (USD)': 'dollar', 'Avg amount per record (USD)': 'dollar',
+           'Avg satisfaction / 5': '%.2f', 'Low-rating rate': '%.2f%%',
+           'Share of selected amount': '%.2f%%'}
+
+
 def display_table(frame):
-    st.dataframe(frame, hide_index=True, width='stretch')
+    """Readable labels and 2-decimal display; underlying values are not rounded."""
+    shown = frame.rename(columns=PRETTY)
+    config = {c: st.column_config.NumberColumn(c, format=fmt)
+              for c, fmt in FORMATS.items() if c in shown.columns}
+    st.dataframe(shown, hide_index=True, width='stretch', column_config=config)
 
 
 def main():
@@ -304,9 +324,12 @@ def main():
             st.info('Chatbot setup pending: add GROQ_API_KEY to Streamlit secrets. Dashboard charts remain available.')
         if st.button('Clear conversation'):
             st.session_state['chat'] = []
-        for message in st.session_state.get('chat', []):
-            with st.chat_message(message['role']):
-                st.write(message['content'])
+        # History and new replies render in this box so they appear above the input.
+        conversation = st.container()
+        with conversation:
+            for message in st.session_state.get('chat', []):
+                with st.chat_message(message['role']):
+                    st.write(message['content'])
         question = st.chat_input('Ask about the filtered NovaRetail data', disabled=not key or f.empty, max_chars=1000)
         if question:
             now = time.time()
@@ -314,14 +337,14 @@ def main():
                 st.info('Please wait a few seconds before sending another question.')
             else:
                 st.session_state['last_request'] = now
-                with st.chat_message('user'):
+                with conversation, st.chat_message('user'):
                     st.write(question)
                 try:
                     with st.spinner('Checking the selected summaries with Groq…'):
                         answer = groq_answer(key, model, make_context(f, scope), st.session_state.get('chat', []), question)
                     st.session_state['chat'] += [{'role': 'user', 'content': question}, {'role': 'assistant', 'content': answer}]
                     st.session_state['chat'] = st.session_state['chat'][-12:]
-                    with st.chat_message('assistant'):
+                    with conversation, st.chat_message('assistant'):
                         st.write(answer)
                 except AuthenticationError:
                     st.error('Groq could not authenticate. Ask Avery to check GROQ_API_KEY in Streamlit secrets.')
